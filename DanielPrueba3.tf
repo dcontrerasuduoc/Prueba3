@@ -30,10 +30,9 @@ module "vpc" {
   }
 }
 
-# Crear un Security Group para web
-resource "aws_security_group" "web_sg" {
-  name_prefix = "web_sg"
-  description = "Security group for web servers"
+resource "aws_security_group" "allow_traffic" {
+  name_prefix = "allow_traffic"
+  description = "Allow web traffic"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -88,14 +87,13 @@ resource "aws_s3_object" "index_php" {
   acl    = "public-read"
 }
 
-# Lanzar 3 instancias EC2 en diferentes AZs
 resource "aws_instance" "web_server" {
   count         = 3
   ami           = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2 AMI
   instance_type = "t2.micro"
   key_name      = "vockey"
   subnet_id     = element(module.vpc.public_subnets, count.index)
-  security_groups = [aws_security_group.web_sg.id]
+  security_groups = [aws_security_group.allow_traffic.id]
 
   user_data = <<-EOF
               #!/bin/bash
@@ -118,7 +116,7 @@ resource "aws_efs_mount_target" "efs_mount" {
   count          = 3
   file_system_id = aws_efs_file_system.web_efs.id
   subnet_id      = element(module.vpc.private_subnets, count.index)
-  security_groups = [aws_security_group.web_sg.id]
+  security_groups = [aws_security_group.allow_traffic.id]
 }
 
 resource "null_resource" "mount_efs" {
@@ -134,7 +132,7 @@ resource "null_resource" "mount_efs" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file("~/.ssh/vockey.pem")
+      private_key = file(var.private_key_path)  # Update this with your private key path
       host        = aws_instance.web_server[count.index].public_ip
     }
   }
@@ -145,13 +143,13 @@ resource "null_resource" "copy_index" {
 
   provisioner "remote-exec" {
     inline = [
-      "aws s3 cp s3://${aws_s3_bucket.website_bucket.bucket}/index.php /var/www/html"
+      "aws s3 cp s3://${aws_s3_bucket.bucket.bucket}/index.php /var/www/html"
     ]
 
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file("~/.ssh/vockey.pem")
+      private_key = file(var.private_key_path)  # Update this with your private key path
       host        = aws_instance.web_server[count.index].public_ip
     }
   }
@@ -161,7 +159,7 @@ resource "aws_lb" "web_lb" {
   name               = "web-lb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.web_sg.id]
+  security_groups    = [aws_security_group.allow_traffic.id]
   subnets            = module.vpc.public_subnets
 
   enable_deletion_protection = false
@@ -200,3 +198,4 @@ resource "aws_lb_target_group_attachment" "web_tg_attachment" {
   target_id        = aws_instance.web_server[count.index].id
   port             = 80
 }
+
