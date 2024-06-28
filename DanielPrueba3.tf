@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "5.53.0" # Ajusta la versión según tus necesidades
+    }
+  }
+}
+
 provider "aws" {
   region = "us-east-1"
 }
@@ -145,3 +154,4 @@ resource "aws_lb_target_group_attachment" "web_attachment" {
   target_id         = aws_instance.web_servers[count.index].id
   port              = 80
 }
+
