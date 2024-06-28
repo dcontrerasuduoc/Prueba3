@@ -30,9 +30,10 @@ module "vpc" {
   }
 }
 
-resource "aws_security_group" "allow_traffic" {
-  name_prefix = "allow_traffic"
-  description = "Allow web traffic"
+# Crear un Security Group para web
+resource "aws_security_group" "web_sg" {
+  name_prefix = "web_sg"
+  description = "Security group for web servers"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -87,13 +88,14 @@ resource "aws_s3_object" "index_php" {
   acl    = "public-read"
 }
 
+# Lanzar 3 instancias EC2 en diferentes AZs
 resource "aws_instance" "web_server" {
   count         = 3
   ami           = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2 AMI
   instance_type = "t2.micro"
   key_name      = "vockey"
   subnet_id     = element(module.vpc.public_subnets, count.index)
-  security_groups = [aws_security_group.web_sg.name]
+  security_groups = [aws_security_group.web_sg.id]
 
   user_data = <<-EOF
               #!/bin/bash
