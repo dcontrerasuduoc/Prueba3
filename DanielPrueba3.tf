@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 3.0"  # Ajusta la versión según tus necesidades
+      version = "5.53.0"
     }
   }
 }
@@ -11,15 +11,8 @@ provider "aws" {
   region = "us-east-1"
 }
 
-variable "private_key_path" {
-  description = "Path to the private key file for SSH connections"
-  type        = string
-  default     = "~/.ssh/vockey.pem"  # Ajusta la ruta según tu configuración
-}
-
 module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "3.0.0"
+  source = "terraform-aws-modules/vpc/aws"
 
   name = "my-vpc"
   cidr = "10.0.0.0/16"
@@ -37,10 +30,8 @@ module "vpc" {
   }
 }
 
-resource "aws_security_group" "allow_traffic" {
-  name_prefix = "allow_traffic"
-  description = "Allow web traffic"
-  vpc_id      = module.vpc.vpc_id
+resource "aws_security_group" "allow_http_https_ssh" {
+  vpc_id = module.vpc.vpc_id
 
   ingress {
     from_port   = 80
@@ -69,38 +60,65 @@ resource "aws_security_group" "allow_traffic" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-}
-
-# Crear un bucket S3 y copiar archivo index.php
-resource "aws_s3_bucket" "bucket" {
-  bucket = "my-website-bucket"
 
   tags = {
-    Name        = "my-website-bucket"
+    Name = "allow_http_https_ssh"
+  }
+}
+
+resource "aws_s3_bucket" "website_bucket" {
+  bucket = "my-website-bucket"
+  acl    = "public-read"
+
+  tags = {
+    Name        = "website_bucket"
     Environment = "prd"
   }
 }
 
-resource "aws_s3_bucket_acl" "bucket_acl" {
-  bucket = aws_s3_bucket.bucket.bucket
-
-  acl = "private"
-}
-
-resource "aws_s3_object" "index_php" {
-  bucket = aws_s3_bucket.bucket.bucket
+resource "aws_s3_bucket_object" "index_php" {
+  bucket = aws_s3_bucket.website_bucket.bucket
   key    = "index.php"
-  source = "index.php"
+  content = <<-EOT
+  <html xmlns="http://www.w3.org/1999/xhtml" >
+
+  <head>
+
+  <title>My Website Home Page</title>
+
+  </head>
+
+  <body>
+
+  <h1>Welcome to my website</h1>
+
+  <p>Now hosted on: <?php echo gethostname(); ?></p>
+
+  <p><?php
+
+  $my_current_ip=exec("ifconfig | grep -Eo 'inet (addr:)?([0-9]*\\.){3}[0-9]*' | grep -Eo '([0-9]*\\.){3}[0-9]*' | grep -v '127.0.0.1'");
+
+  echo $my_current_ip; ?></p>
+
+  </body>
+
+  </html>
+  EOT
   acl    = "public-read"
 }
 
-resource "aws_instance" "web_server" {
-  count         = 3
-  ami           = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2 AMI
-  instance_type = "t2.micro"
-  key_name      = "vockey"
-  subnet_id     = element(module.vpc.public_subnets, count.index)
-  security_groups = [aws_security_group.allow_traffic.id]
+resource "aws_efs_file_system" "efs" {
+  creation_token = "efs-for-web-servers"
+}
+
+resource "aws_instance" "web" {
+  count = 3
+
+  ami                         = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (change as necessary)
+  instance_type               = "t2.micro"
+  subnet_id                   = element(module.vpc.public_subnets, count.index)
+  key_name                    = "vockey"
+  vpc_security_group_ids      = [aws_security_group.allow_http_https_ssh.id]
 
   user_data = <<-EOF
               #!/bin/bash
@@ -108,102 +126,73 @@ resource "aws_instance" "web_server" {
               sudo yum install -y httpd php
               sudo systemctl start httpd
               sudo systemctl enable httpd
+              sudo mkdir -p /var/www/html
+              sudo mount -t efs ${aws_efs_file_system.efs.id}:/ /var/www/html
+              aws s3 cp s3://${aws_s3_bucket.website_bucket.bucket}/index.php /var/www/html/
               EOF
 
   tags = {
-    Name = "WebServer${count.index}"
+    Name = "WebServerInstance"
   }
 }
 
-resource "aws_efs_file_system" "web_efs" {
-  creation_token = "web-efs"
+resource "aws_efs_mount_target" "efs_mount_target" {
+  count           = 3
+  file_system_id  = aws_efs_file_system.efs.id
+  subnet_id       = element(module.vpc.public_subnets, count.index)
+  security_groups = [aws_security_group.allow_http_https_ssh.id]
 }
 
-resource "aws_efs_mount_target" "efs_mount" {
-  count          = 3
-  file_system_id = aws_efs_file_system.web_efs.id
-  subnet_id      = element(module.vpc.private_subnets, count.index)
-  security_groups = [aws_security_group.allow_traffic.id]
-}
-
-resource "null_resource" "mount_efs" {
-  count = 3
-
-  provisioner "remote-exec" {
-    inline = [
-      "sudo yum install -y amazon-efs-utils",
-      "sudo mkdir -p /var/www/html",
-      "sudo mount -t efs ${aws_efs_file_system.web_efs.id}:/ /var/www/html"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ec2-user"
-      private_key = file(var.private_key_path)  # Utiliza la variable aquí
-      host        = aws_instance.web_server[count.index].public_ip
-    }
-  }
-}
-
-resource "null_resource" "copy_index" {
-  count = 3
-
-  provisioner "remote-exec" {
-    inline = [
-      "aws s3 cp s3://${aws_s3_bucket.bucket.bucket}/index.php /var/www/html"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ec2-user"
-      private_key = file(var.private_key_path)  # Utiliza la variable aquí
-      host        = aws_instance.web_server[count.index].public_ip
-    }
-  }
-}
-
-resource "aws_lb" "web_lb" {
-  name               = "web-lb"
+resource "aws_lb" "alb" {
+  name               = "my-alb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.allow_traffic.id]
+  security_groups    = [aws_security_group.allow_http_https_ssh.id]
   subnets            = module.vpc.public_subnets
 
   enable_deletion_protection = false
+
+  tags = {
+    Name        = "my-alb"
+    Environment = "prd"
+  }
 }
 
-resource "aws_lb_target_group" "web_tg" {
-  name     = "web-tg"
+resource "aws_lb_target_group" "tg" {
+  name     = "my-tg"
   port     = 80
   protocol = "HTTP"
   vpc_id   = module.vpc.vpc_id
 
   health_check {
+    path                = "/"
+    interval            = 30
+    timeout             = 5
     healthy_threshold   = 2
     unhealthy_threshold = 2
-    timeout             = 5
-    interval            = 30
-    path                = "/"
     matcher             = "200"
   }
-}
 
-resource "aws_lb_listener" "web_listener" {
-  load_balancer_arn = aws_lb.web_lb.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.web_tg.arn
+  tags = {
+    Name        = "my-tg"
+    Environment = "prd"
   }
 }
 
-resource "aws_lb_target_group_attachment" "web_tg_attachment" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.web_tg.arn
-  target_id        = aws_instance.web_server[count.index].id
-  port             = 80
+resource "aws_lb_listener" "listener" {
+  load_balancer_arn = aws_lb.alb.arn
+  port              = "80"
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg.arn
+  }
 }
 
+resource "aws_lb_target_group_attachment" "tg_attachment" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.tg.arn
+  target_id        = element(aws_instance.web.*.id, count.index)
+  port             = 80
+}
 
