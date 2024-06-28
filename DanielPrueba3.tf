@@ -13,12 +13,11 @@ provider "aws" {
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "3.13.0"
 
   name = "my-vpc"
   cidr = "10.0.0.0/16"
-  azs  = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
+  azs  = ["us-east-1a", "us-east-1b", "us-east-1c"]
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 
@@ -31,8 +30,8 @@ module "vpc" {
   }
 }
 
-resource "aws_security_group" "web_sg" {
-  name_prefix = "web-sg-"
+resource "aws_security_group" "allow_traffic" {
+  name_prefix = "allow_traffic"
   description = "Allow web traffic"
   vpc_id      = module.vpc.vpc_id
 
@@ -65,15 +64,26 @@ resource "aws_security_group" "web_sg" {
   }
 }
 
-resource "aws_s3_bucket" "website_bucket" {
+# Crear un bucket S3 y copiar archivo index.php
+resource "aws_s3_bucket" "bucket" {
   bucket = "my-website-bucket"
-  acl    = "private"
+
+  tags = {
+    Name        = "my-website-bucket"
+    Environment = "prd"
+  }
 }
 
-resource "aws_s3_bucket_object" "index_php" {
-  bucket = aws_s3_bucket.website_bucket.bucket
+resource "aws_s3_bucket_acl" "bucket_acl" {
+  bucket = aws_s3_bucket.bucket.bucket
+
+  acl = "private"
+}
+
+resource "aws_s3_object" "index_php" {
+  bucket = aws_s3_bucket.bucket.bucket
   key    = "index.php"
-  source = "path/to/index.php"  # Ruta local del archivo index.php
+  source = "index.php"
   acl    = "public-read"
 }
 
