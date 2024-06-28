@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "5.53.0" # Ajusta la versión según tus necesidades
+      version = ">= 3.0, < 4.0"  # Ajusta la versión según tus necesidades
     }
   }
 }
@@ -26,10 +26,11 @@ module "vpc" {
   enable_vpn_gateway = false
  
   tags = {
-    Terraform = "true"
+    Terraform   = "true"
     Environment = "prd"
   }
 }
+
 # Crear un Security Group
 resource "aws_security_group" "allow_traffic" {
   name        = "allow_traffic"
@@ -72,7 +73,6 @@ resource "aws_security_group" "allow_traffic" {
 # Crear un bucket S3 y copiar archivo index.php
 resource "aws_s3_bucket" "bucket" {
   bucket = "my-website-bucket"
-  acl    = "private"
 
   tags = {
     Name        = "my-website-bucket"
@@ -80,7 +80,13 @@ resource "aws_s3_bucket" "bucket" {
   }
 }
 
-resource "aws_s3_bucket_object" "index_php" {
+resource "aws_s3_bucket_acl" "bucket_acl" {
+  bucket = aws_s3_bucket.bucket.bucket
+
+  acl = "private"
+}
+
+resource "aws_s3_object" "index_php" {
   bucket = aws_s3_bucket.bucket.bucket
   key    = "index.php"
   source = "index.php"
