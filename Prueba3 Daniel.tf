@@ -20,6 +20,11 @@ module "vpc" {
     Terraform   = "true"
     Environment = "prd"
   }
+
+  # Evitar argumentos obsoletos
+  enable_classiclink               = false
+  enable_classiclink_dns_support   = false
+  default_vpc_enable_classiclink   = false
 }
 
 resource "aws_security_group" "web_sg" {
@@ -159,4 +164,5 @@ resource "aws_lb_target_group_attachment" "web_tg_attachment" {
   target_id        = aws_instance.web_server[count.index].id
   port             = 80
 }
+
 
