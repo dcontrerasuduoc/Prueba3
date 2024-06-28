@@ -11,6 +11,11 @@ provider "aws" {
   region = "us-east-1"
 }
 
+resource "random_string" "random_id" {
+  length  = 8
+  special = false
+}
+
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
 
@@ -21,7 +26,7 @@ module "vpc" {
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 
-  enable_nat_gateway = true
+  enable_nat_gateway = false
   enable_vpn_gateway = false
 
   tags = {
@@ -67,8 +72,8 @@ resource "aws_security_group" "allow_http_https_ssh" {
 }
 
 resource "aws_s3_bucket" "website_bucket" {
-  bucket = "my-website-bucket"
-  acl    = "public-read"
+  bucket = "my-website-bucket-${random_string.random_id.result}"
+  acl    = "private"
 
   tags = {
     Name        = "website_bucket"
@@ -76,39 +81,20 @@ resource "aws_s3_bucket" "website_bucket" {
   }
 }
 
-resource "aws_s3_bucket_object" "index_php" {
+resource "aws_s3_bucket_acl" "website_bucket_acl" {
+  bucket = aws_s3_bucket.website_bucket.id
+  acl    = "public-read"
+}
+
+resource "aws_s3_object" "index_php" {
   bucket = aws_s3_bucket.website_bucket.bucket
   key    = "index.php"
-  content = <<-EOT
-  <html xmlns="http://www.w3.org/1999/xhtml" >
-
-  <head>
-
-  <title>My Website Home Page</title>
-
-  </head>
-
-  <body>
-
-  <h1>Welcome to my website</h1>
-
-  <p>Now hosted on: <?php echo gethostname(); ?></p>
-
-  <p><?php
-
-  $my_current_ip=exec("ifconfig | grep -Eo 'inet (addr:)?([0-9]*\\.){3}[0-9]*' | grep -Eo '([0-9]*\\.){3}[0-9]*' | grep -v '127.0.0.1'");
-
-  echo $my_current_ip; ?></p>
-
-  </body>
-
-  </html>
-  EOT
+  source = "index.php"
   acl    = "public-read"
 }
 
 resource "aws_efs_file_system" "efs" {
-  creation_token = "efs-for-web-servers"
+  creation_token = "efs-for-web-servers-${random_string.random_id.result}"
 }
 
 resource "aws_instance" "web" {
@@ -144,7 +130,7 @@ resource "aws_efs_mount_target" "efs_mount_target" {
 }
 
 resource "aws_lb" "alb" {
-  name               = "my-alb"
+  name               = "my-alb-${random_string.random_id.result}"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.allow_http_https_ssh.id]
@@ -159,7 +145,7 @@ resource "aws_lb" "alb" {
 }
 
 resource "aws_lb_target_group" "tg" {
-  name     = "my-tg"
+  name     = "my-tg-${random_string.random_id.result}"
   port     = 80
   protocol = "HTTP"
   vpc_id   = module.vpc.vpc_id
@@ -195,4 +181,3 @@ resource "aws_lb_target_group_attachment" "tg_attachment" {
   target_id        = element(aws_instance.web.*.id, count.index)
   port             = 80
 }
-
