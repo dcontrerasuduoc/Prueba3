@@ -14,6 +14,7 @@ provider "aws" {
 resource "random_string" "random_id" {
   length  = 8
   special = false
+  upper   = false
 }
 
 module "vpc" {
@@ -73,7 +74,6 @@ resource "aws_security_group" "allow_http_https_ssh" {
 
 resource "aws_s3_bucket" "website_bucket" {
   bucket = "my-website-bucket-${random_string.random_id.result}"
-  acl    = "private"
 
   tags = {
     Name        = "website_bucket"
