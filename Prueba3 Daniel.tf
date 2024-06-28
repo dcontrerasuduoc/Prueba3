@@ -58,6 +58,10 @@ resource "aws_security_group" "web_sg" {
 
 resource "aws_s3_bucket" "website_bucket" {
   bucket = "my-website-bucket"
+}
+
+resource "aws_s3_bucket_acl" "website_bucket_acl" {
+  bucket = aws_s3_bucket.website_bucket.id
   acl    = "private"
 }
 
