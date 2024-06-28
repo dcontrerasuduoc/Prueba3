@@ -20,11 +20,6 @@ module "vpc" {
     Terraform   = "true"
     Environment = "prd"
   }
-
-  # Evitar argumentos obsoletos
-  enable_classiclink               = false
-  enable_classiclink_dns_support   = false
-  default_vpc_enable_classiclink   = false
 }
 
 resource "aws_security_group" "web_sg" {
@@ -63,11 +58,14 @@ resource "aws_security_group" "web_sg" {
 
 resource "aws_s3_bucket" "website_bucket" {
   bucket = "my-website-bucket"
+  acl    = "private"
 }
 
-resource "aws_s3_bucket_acl" "website_bucket_acl" {
-  bucket = aws_s3_bucket.website_bucket.id
-  acl    = "private"
+resource "aws_s3_bucket_object" "index_php" {
+  bucket = aws_s3_bucket.website_bucket.bucket
+  key    = "index.php"
+  source = "path/to/index.php"  # Ruta local del archivo index.php
+  acl    = "public-read"
 }
 
 resource "aws_instance" "web_server" {
@@ -110,6 +108,23 @@ resource "null_resource" "mount_efs" {
       "sudo yum install -y amazon-efs-utils",
       "sudo mkdir -p /var/www/html",
       "sudo mount -t efs ${aws_efs_file_system.web_efs.id}:/ /var/www/html"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("~/.ssh/vockey.pem")
+      host        = aws_instance.web_server[count.index].public_ip
+    }
+  }
+}
+
+resource "null_resource" "copy_index" {
+  count = 3
+
+  provisioner "remote-exec" {
+    inline = [
+      "aws s3 cp s3://${aws_s3_bucket.website_bucket.bucket}/index.php /var/www/html"
     ]
 
     connection {
@@ -164,5 +179,4 @@ resource "aws_lb_target_group_attachment" "web_tg_attachment" {
   target_id        = aws_instance.web_server[count.index].id
   port             = 80
 }
-
 
