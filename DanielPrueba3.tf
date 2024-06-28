@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "5.53.0" # Ajusta la versión según tus necesidades
+      version = ">= 3.0"  # Ajusta la versión según tus necesidades
     }
   }
 }
@@ -11,13 +11,20 @@ provider "aws" {
   region = "us-east-1"
 }
 
+variable "private_key_path" {
+  description = "Path to the private key file for SSH connections"
+  type        = string
+  default     = "~/.ssh/vockey.pem"  # Ajusta la ruta según tu configuración
+}
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
+  version = "3.0.0"
 
   name = "my-vpc"
   cidr = "10.0.0.0/16"
 
-  azs  = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 
@@ -132,7 +139,7 @@ resource "null_resource" "mount_efs" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file(var.private_key_path)  # Update this with your private key path
+      private_key = file(var.private_key_path)  # Utiliza la variable aquí
       host        = aws_instance.web_server[count.index].public_ip
     }
   }
@@ -149,7 +156,7 @@ resource "null_resource" "copy_index" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file(var.private_key_path)  # Update this with your private key path
+      private_key = file(var.private_key_path)  # Utiliza la variable aquí
       host        = aws_instance.web_server[count.index].public_ip
     }
   }
@@ -198,4 +205,5 @@ resource "aws_lb_target_group_attachment" "web_tg_attachment" {
   target_id        = aws_instance.web_server[count.index].id
   port             = 80
 }
+
 
