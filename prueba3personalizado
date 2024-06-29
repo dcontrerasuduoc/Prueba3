@@ -11,102 +11,14 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Buscar una AMI válida en la región us-east-1
-data "aws_ami" "amazon_linux_ami" {
-  most_recent = true
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-hvm-*"]
-  }
-
-  filter {
-    name   = "architecture"
-    values = ["x86_64"]
-  }
-
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# Crear una VPC
-module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
- 
-  name = "VPC-DCONTRERAS"
-  cidr = "10.0.0.0/16"
- 
-  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
- 
-  enable_nat_gateway = true
-  enable_vpn_gateway = false
- 
-  tags = {
-    Terraform = "true"
-    Environment = "prd"
-  }
-}
-
-# Crear un Security Group
-resource "aws_security_group" "allow_traffic" {
-  name        = "GRUPO-DCONTRERAS"
-  description = "Allow traffic on ports 80, 443, and 22"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "GRUPO-DCONTRERAS"
-  }
-}
-
-# Nombre único para el bucket S3
+# Generar un ID aleatorio
 resource "random_id" "bucket_suffix" {
-  byte_length = 8
+  byte_length = 4
 }
 
-locals {
-  bucket_name = "bucket-contreras-${random_id.bucket_suffix.hex}"
-}
-
-# Creación del bucket en la región us-east-1
+# Crear el bucket S3 con el nombre deseado
 resource "aws_s3_bucket" "example" {
-  bucket = local.bucket_name
+  bucket = "bucket-contreras-${random_id.bucket_suffix.hex}"
   tags = {
     Name = "MY BUCKET"
   }
