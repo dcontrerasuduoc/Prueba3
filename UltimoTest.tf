@@ -76,7 +76,7 @@ resource "random_id" "bucket_suffix" {
 }
 
 locals {
-  bucket_name = "my-tf-test-bucket-contreras-${random_id.bucket_suffix.hex}"
+  bucket_name = "bucket-contreras-${random_id.bucket_suffix.hex}"
 }
 
 # Creación del bucket en la región us-east-1
