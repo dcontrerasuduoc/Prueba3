@@ -146,7 +146,7 @@ resource "aws_instance" "web" {
               EOF
 
   tags = {
-    Name = "WebServer-${count.index}"
+    Name = "EC2-CONTRERAS-${count.index}"
   }
 }
 
