@@ -49,7 +49,7 @@ module "vpc" {
   enable_vpn_gateway = false
  
   tags = {
-    Terraform   = "true"
+    Terraform = "true"
     Environment = "prd"
   }
 }
@@ -232,15 +232,29 @@ resource "aws_lb_target_group_attachment" "target_attachment" {
   port             = 80
 }
 
+resource "aws_iam_role" "your_terraform_execution_role" {
+  name               = "your-terraform-execution-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
 resource "aws_iam_policy" "route53resolver_policy" {
-  name        = "Route53ResolverListFirewallRuleGroupAssociationsPolicy"
-  description = "Policy to allow listing of Route 53 Resolver firewall rule group associations"
+  name        = "route53resolver_policy"
+  description = "Policy to allow Route53 Resolver actions"
 
   policy = jsonencode({
-    Version = "2012-10-17",
+    Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow",
-      Action   = "route53resolver:ListFirewallRuleGroupAssociations",
+      Effect   = "Allow"
+      Action   = "route53resolver:ListFirewallRuleGroupAssociations"
       Resource = "arn:aws:route53resolver:us-east-1:212971997363:firewall-rule-group-association/*"
     }]
   })
@@ -248,6 +262,7 @@ resource "aws_iam_policy" "route53resolver_policy" {
 
 resource "aws_iam_policy_attachment" "attach_route53resolver_policy" {
   name       = "attach-route53resolver-policy"
-  roles      = [aws_iam_role.your_terraform_execution_role.name]  # Reemplaza con el nombre de tu rol IAM de ejecución de Terraform
+  roles      = [aws_iam_role.your_terraform_execution_role.name]
   policy_arn = aws_iam_policy.route53resolver_policy.arn
 }
+
