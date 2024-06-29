@@ -11,20 +11,102 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Generar un ID aleatorio
-resource "random_id" "bucket_suffix" {
-  byte_length = 4
+data "aws_ami" "amazon_linux_ami" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
-# Crear el bucket S3 con el nombre deseado
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+ 
+  name = "VPC-DCONTRERAS"
+  cidr = "10.0.0.0/16"
+ 
+  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+ 
+  enable_nat_gateway = true
+  enable_vpn_gateway = false
+ 
+  tags = {
+    Terraform = "true"
+    Environment = "prd"
+  }
+}
+
+resource "aws_security_group" "allow_traffic" {
+  name        = "GRUPO-DCONTRERAS"
+  description = "Allow traffic on ports 80, 443, and 22"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "GRUPO-DCONTRERAS"
+  }
+}
+
+resource "random_id" "bucket_suffix" {
+  byte_length = 8
+}
+
+locals {
+  bucket_name = "bucket-dcontreras-${random_id.bucket_suffix.hex}"
+}
+
 resource "aws_s3_bucket" "example" {
-  bucket = "bucket-contreras-${random_id.bucket_suffix.hex}"
+  bucket = local.bucket_name
   tags = {
     Name = "MY BUCKET"
   }
 }
 
-# Permitir el acceso público al bucket S3
 resource "aws_s3_bucket_public_access_block" "example" {
   bucket = aws_s3_bucket.example.id
 
@@ -34,7 +116,6 @@ resource "aws_s3_bucket_public_access_block" "example" {
   restrict_public_buckets = false
 }
 
-# Esperar antes de aplicar la política de acceso público
 resource "aws_s3_bucket_policy" "bucket_policy" {
   bucket = aws_s3_bucket.example.id
 
@@ -54,7 +135,6 @@ resource "aws_s3_bucket_policy" "bucket_policy" {
   depends_on = [aws_s3_bucket_public_access_block.example]
 }
 
-# Crear objeto index.php dentro del bucket usando aws_s3_object
 resource "aws_s3_object" "object" {
   bucket = aws_s3_bucket.example.id
   key    = "index.php"
@@ -63,10 +143,9 @@ resource "aws_s3_object" "object" {
   depends_on = [aws_s3_bucket_policy.bucket_policy]
 }
 
-# Lanzar 3 instancias EC2 en diferentes AZs
 resource "aws_instance" "web" {
   count         = 3
-  ami           = data.aws_ami.amazon_linux_ami.id  # Usar la AMI encontrada
+  ami           = data.aws_ami.amazon_linux_ami.id
   instance_type = "t2.micro"
   key_name      = "vockey"
 
@@ -87,7 +166,6 @@ resource "aws_instance" "web" {
   }
 }
 
-# Crear un volumen EFS y montarlo en las instancias EC2
 resource "aws_efs_file_system" "efs" {
   creation_token = "my-efs"
   tags = {
@@ -102,7 +180,6 @@ resource "aws_efs_mount_target" "efs_mount" {
   security_groups = [aws_security_group.allow_traffic.id]
 }
 
-# Crear un Load Balancer y adjuntar las instancias
 resource "aws_lb" "alb" {
   name               = "MY-ALB-CONTRERAS"
   internal           = false
