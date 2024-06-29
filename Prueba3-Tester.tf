@@ -116,6 +116,11 @@ resource "aws_s3_bucket_public_access_block" "example" {
   restrict_public_buckets = false
 }
 
+resource "time_sleep" "wait_10_seconds" {
+  depends_on      = [aws_s3_bucket.example]
+  create_duration = "10s"
+}
+
 resource "aws_s3_bucket_policy" "bucket_policy" {
   bucket = aws_s3_bucket.example.id
 
@@ -132,13 +137,14 @@ resource "aws_s3_bucket_policy" "bucket_policy" {
     }]
   })
 
-  depends_on = [aws_s3_bucket_public_access_block.example]
+  depends_on = [time_sleep.wait_10_seconds]
 }
 
 resource "aws_s3_object" "object" {
   bucket = aws_s3_bucket.example.id
   key    = "index.php"
   source = "index.php"
+  content_type = "text/html"
 
   depends_on = [aws_s3_bucket_policy.bucket_policy]
 }
@@ -230,39 +236,5 @@ resource "aws_lb_target_group_attachment" "target_attachment" {
   target_group_arn = aws_lb_target_group.target_group.arn
   target_id        = element(aws_instance.web.*.id, count.index)
   port             = 80
-}
-
-resource "aws_iam_role" "your_terraform_execution_role" {
-  name               = "your-terraform-execution-role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_policy" "route53resolver_policy" {
-  name        = "route53resolver_policy"
-  description = "Policy to allow Route53 Resolver actions"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "route53resolver:ListFirewallRuleGroupAssociations"
-      Resource = "arn:aws:route53resolver:us-east-1:212971997363:firewall-rule-group-association/*"
-    }]
-  })
-}
-
-resource "aws_iam_policy_attachment" "attach_route53resolver_policy" {
-  name       = "attach-route53resolver-policy"
-  roles      = [aws_iam_role.your_terraform_execution_role.name]
-  policy_arn = aws_iam_policy.route53resolver_policy.arn
 }
 
